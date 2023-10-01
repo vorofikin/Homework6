@@ -36,17 +36,15 @@ stop() ->
   gen_server:stop(?MODULE).
 
 init([]) ->
-%%  WorkerPid = start_worker(),
-%%  #state{cache_worker = WorkerPid},
   {ok, []}.
 
 handle_call({create, TableName}, _From, State) ->
-  Table = ets:new(TableName, [public, set, named_table]),
+  Table = ets:new(TableName, [public, ordered_set, named_table]),
+  erlang:send_after(60000, self(), {delete_obsolete, Table}),
   {reply, Table, State};
 handle_call({insert, TableName, Key, Value, Ttl}, _From, State) ->
   ExpireTime = calendar:datetime_to_gregorian_seconds(calendar:local_time()) + Ttl,
   ets:insert(TableName, {Key, Value, ExpireTime}),
-%%  erlang:send_after(Ttl, #state.cache_worker, {TableName, Key}),
   {reply, {ok, Key, Value}, State};
 handle_call({insert, TableName, Key, Value}, _From, State) ->
   ets:insert(TableName, {Key, Value}),
@@ -54,10 +52,10 @@ handle_call({insert, TableName, Key, Value}, _From, State) ->
 handle_call({lookup, TableName, Key}, _From, State) ->
   CurrentUnixTime = calendar:datetime_to_gregorian_seconds(calendar:local_time()),
   case ets:lookup(TableName, Key) of
-    {Key, Value} -> {reply, {Key, Value}, State};
-    [{Key, Value}] -> {reply, {Key, Value}, State};
+    {Key, Value} -> {reply, Value, State};
+    [{Key, Value}] -> {reply, Value, State};
     {Key, Value, ExpireTime} when CurrentUnixTime =< ExpireTime ->
-      {reply, {Key, Value}, State};
+      {reply, Value, State};
     {Key, Value, ExpireTime} ->
       ets:delete(TableName, Key),
       {reply, undefined, State};
@@ -72,6 +70,11 @@ handle_call(_Request, _From, State) ->
 handle_cast(_Request, State) ->
   {noreply, State}.
 
+handle_info({delete_obsolete, TableName}, State) ->
+  io:format(delete),
+  delete_obsolete(TableName),
+  erlang:send_after(60000, self(), {delete_obsolete, TableName}),
+  {noreply, State};
 handle_info(_Info, State) ->
   {noreply, State}.
 
@@ -81,25 +84,20 @@ code_change(_OldVersion, State, _Extra) ->
 terminate(_Reason, _State) ->
   normal.
 
-start_worker() ->
-  WorkerPid = spawn_link(fun() ->
-    receive
-      {TableName, Key} ->
-        ets:delete(TableName, Key)
-    end,
-    check_values()
-    end
-  ),
-  io:format("worker started: ~p~n", [WorkerPid]),
-  WorkerPid.
+delete_obsolete(TableName) ->
+  CurrentUnixtime = get_unixtime(),
+  FirstKey = ets:first(TableName),
+  ok = delete_obsolete(TableName, FirstKey, CurrentUnixtime).
 
-%%stop_worker() ->
-%%  stop
-
-check_values() ->
-%%  CurrentTime = erlang:system_time(second),
-  receive
-    {TableName, Key} ->
-      ets:delete(TableName, Key)
+delete_obsolete(_TableName, '$end_of_table', _Unixtime) ->
+  ok;
+delete_obsolete(TableName, Key, Unixtime) ->
+  case ets:lookup(TableName, Key) of
+    [{Key, _Value, EndDateSec}] when Unixtime >= EndDateSec ->
+      ets:delete(TableName, Key);
+    _ -> true
   end,
-  check_values().
+  delete_obsolete(TableName, ets:next(TableName, Key), Unixtime).
+
+get_unixtime() ->
+  calendar:datetime_to_gregorian_seconds(calendar:local_time()).
