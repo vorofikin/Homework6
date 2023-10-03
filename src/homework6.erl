@@ -1,4 +1,4 @@
--module(homework6_cache_server).
+-module(homework6).
 
 -behavior(gen_server).
 
@@ -6,12 +6,9 @@
 
 -export([init/1, handle_call/3, terminate/2, code_change/3, handle_info/2, handle_cast/2]).
 
--record(state, {cache_worker}).
-
 -define(SERVER, ?MODULE).
 
 start_link() ->
-  #state{},
   gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 start() ->
@@ -54,9 +51,9 @@ handle_call({lookup, TableName, Key}, _From, State) ->
   case ets:lookup(TableName, Key) of
     {Key, Value} -> {reply, Value, State};
     [{Key, Value}] -> {reply, Value, State};
-    {Key, Value, ExpireTime} when CurrentUnixTime =< ExpireTime ->
+    [{Key, Value, ExpireTime}] when CurrentUnixTime =< ExpireTime ->
       {reply, Value, State};
-    {Key, Value, ExpireTime} ->
+    [{Key, _Value, _ExpireTime}] ->
       ets:delete(TableName, Key),
       {reply, undefined, State};
     _ -> {reply, undefined, State}

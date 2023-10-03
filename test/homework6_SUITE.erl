@@ -1,4 +1,4 @@
--module(homework6_cache_server_SUITE).
+-module(homework6_SUITE).
 
 -compile(export_all).
 
@@ -6,7 +6,7 @@
 -include_lib("common_test/include/ct.hrl").
 
 init_per_suite(Config) ->
-  {ok, Pid} = homework6_cache_server:start(),
+  {ok, Pid} = homework6:start(),
   [{pid, Pid}, {table_name, test_table} | Config].
 
 end_per_suite(Config) ->
@@ -23,10 +23,10 @@ all() -> [
   start_link_test,
   create_test,
   insert_test,
-  insert_with_ttl_test,
   lookup_test,
   delete_test,
-  lookup_undef_test
+  lookup_undef_test,
+  insert_with_ttl_test
 ].
 
 start_link_test(Config) ->
@@ -46,7 +46,7 @@ insert_with_ttl_test(Config) ->
   {ok, Key, Value} = gen_server:call(?config(pid, Config), {insert, ?config(table_name, Config), key3, value3, 5}),
   ?assertEqual(key3, Key),
   ?assertEqual(value3, Value),
-  timer:sleep(7),
+  timer:sleep(62000),
   InsertedValue = gen_server:call(?config(pid, Config), {lookup, ?config(table_name, Config), Key}),
   ?assertEqual(undefined, InsertedValue).
 
@@ -54,8 +54,7 @@ lookup_test(Config) ->
   Pid = ?config(pid, Config),
   Table = ?config(table_name, Config),
   {ok, Key, Value} = gen_server:call(Pid, {insert, Table, key1, value1}),
-  {InsertedKey, InsertedValue} = gen_server:call(Pid, {lookup, Table, Key}),
-  ?assertEqual(Key, InsertedKey),
+  InsertedValue = gen_server:call(Pid, {lookup, Table, Key}),
   ?assertEqual(Value, InsertedValue).
 
 lookup_undef_test(Config) ->

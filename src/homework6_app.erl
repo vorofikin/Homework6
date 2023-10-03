@@ -6,7 +6,7 @@
 
 start(_StartType, _StartArgs) ->
     homework6_sup:start_link(),
-    homework6_cache_server:start_link().
+    homework6:start_link().
 
 stop(_State) ->
     ok.
